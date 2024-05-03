@@ -11,10 +11,29 @@ RUN true \
 	&& echo "source $ck_dir/devel_isolated/setup.bash" >> ~/.bashrc \
         && mkdir -p $ck_dir
 
+# 小鱼一键换源
+RUN apt update \ 
+    && apt install wget python3-yaml -y  \
+    && echo "chooses:\n" > fish_install.yaml \
+    && echo "- {choose: 5, desc: '一键配置:系统源(更换系统源,支持全版本Ubuntu系统)'}\n" >> fish_install.yaml \
+    && echo "- {choose: 2, desc: 更换系统源并清理第三方源}\n" >> fish_install.yaml \
+    && echo "- {choose: 1, desc: 添加ROS/ROS2源}\n" >> fish_install.yaml \
+    && wget http://fishros.com/install  -O fishros && /bin/bash fishros \
+    && rm -rf /var/lib/apt/lists/*  /tmp/* /var/tmp/* \
+    && apt-get clean && apt autoclean 
+
+# rosdepc
+RUN apt update \ 
+    && apt install wget python3-yaml -y  \
+    && echo "chooses:\n" > fish_install.yaml \
+    && echo "- {choose: 3, desc: '一键安装:rosdep(小鱼的rosdepc,又快又好用)'}\n" >> fish_install.yaml \
+    && wget http://fishros.com/install  -O fishros && /bin/bash fishros \
+    && rm -rf /var/lib/apt/lists/*  /tmp/* /var/tmp/* \
+    && apt-get clean && apt autoclean 
+
 # install cartographer according to the page(https://google-cartographer-ros.readthedocs.io/en/latest/compilation.html)
 RUN apt-get update \
     && apt-get install -y ninja-build stow vim ros-melodic-map-server 
-
 
 WORKDIR $ck_dir
 #-----
@@ -30,9 +49,7 @@ RUN apt-get update && \
 ADD cartographer_git $ck_dir
 #-----
 
-RUN sudo rosdep fix-permissions \   
-    && rosdep update \
-    && rosdep install --from-paths src --ignore-src --rosdistro=${ROS_DISTRO} -y 
+RUN rosdepc install -r --from-paths src --ignore-src --rosdistro $ROS_DISTRO -y
 RUN ./src/cartographer/scripts/install_abseil.sh \
     && . /opt/ros/melodic/setup.sh \ 
     && catkin_make_isolated --install --use-ninja
@@ -48,10 +65,9 @@ ENV CATKIN_WS $ck_dir
 #    ${NVIDIA_DRIVER_CAPABILITIES:+$NVIDIA_DRIVER_CAPABILITIES,}graphics
 
 # add package gmcl
-
 RUN cd src \
-    && git clone https://github.com/adler-1994/gmcl.git \
-    && git clone --branch melodic-devel https://github.com/ros-planning/navigation.git 
+    && git clone https://mirror.ghproxy.com/https://github.com/adler-1994/gmcl.git \
+    && git clone --branch melodic-devel https://mirror.ghproxy.com/https://github.com/ros-planning/navigation.git 
 
 ADD gmcl $ck_dir/src/gmcl
 ADD amcl $ck_dir/src/navigation/amcl
@@ -78,8 +94,8 @@ COPY slam_toolbox/preprocessing/bag.py /opt/ros/melodic/lib/python2.7/dist-packa
 RUN apt-get update && apt-get install -y texlive-latex-base texlive-fonts-recommended texlive-fonts-extra texlive-latex-extra
 #ADD evo /usr/local/lib/python2.7/dist-packages/evo # not available in repoo
 RUN apt-get install -y libnotify-bin dvipng && pip install ruamel.yaml==0.15.1 \
-    && git clone https://github.com/uzh-rpg/rpg_trajectory_evaluation.git ~/catkin_ws/src/rpg_trajectory_evaluation \
-    && git clone https://github.com/catkin/catkin_simple.git ~/catkin_ws/src/catkin_simple
+    && git clone https://mirror.ghproxy.com/https://github.com/uzh-rpg/rpg_trajectory_evaluation.git ~/catkin_ws/src/rpg_trajectory_evaluation \
+    && git clone https://mirror.ghproxy.com/https://github.com/catkin/catkin_simple.git ~/catkin_ws/src/catkin_simple
 
 # Add package gmcl_carto and post processing scripts 
 ADD gmcl_carto $ck_dir/src/gmcl_carto
@@ -88,6 +104,15 @@ ADD gmcl_carto $ck_dir/src/gmcl_carto
 RUN chmod -R 777 ~/catkin_ws/src/ogm2pgbm/scripts
 RUN chmod -R 777 ~/catkin_ws/install_isolated/share/ogm2pgbm/scripts
 
-RUN /bin/bash -c 'source /opt/ros/melodic/setup.bash'
+# setup zsh
+RUN sh -c "$(wget -O- https://mirror.ghproxy.com/https://github.com/deluan/zsh-in-docker/releases/download/v1.1.5/zsh-in-docker.sh)" -- \
+    -t jispwoso -p git \
+    -p https://mirror.ghproxy.com/https://github.com/zsh-users/zsh-autosuggestions \
+    -p https://mirror.ghproxy.com/https://github.com/zsh-users/zsh-syntax-highlighting && \
+    chsh -s /bin/zsh && \
+    rm -rf /var/lib/apt/lists/*
 
-CMD ["/bin/bash" "-c" "/bin/bash"] 
+# setup .zshrc
+RUN echo "export TERM=xterm-256color" >> /root/.zshrc && \
+    echo "source /opt/ros/melodic/setup.sh" >> /root/.zshrc && \
+    echo "source $ck_dir/devel_isolated/setup.sh" >> /root/.zshrc
